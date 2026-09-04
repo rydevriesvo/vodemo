@@ -65,6 +65,33 @@
       z-index: 1;
     }
 
+    /* Fixed strips pinned to the very top/bottom of the iframe's own
+       viewport, so if this content scrolls independently of the host
+       page, there's a visible, deliberate-looking edge rather than a
+       flicker/cut that could read as a bug. Styled to match the site's
+       existing frame-line divider (same rgba used around fullBleed
+       sections) rather than the pink/cyan accent colors, so it stays
+       understated. */
+    .cp__edgeTop,
+    .cp__edgeBottom {
+      position: fixed;
+      left: 0;
+      right: 0;
+      height: 28px;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .cp__edgeTop {
+      top: 0;
+      background: linear-gradient(to bottom, var(--pagebg) 0%, var(--pagebg) 45%, transparent 100%);
+      border-bottom: 1px solid rgba(247, 250, 252, 0.14);
+    }
+    .cp__edgeBottom {
+      bottom: 0;
+      background: linear-gradient(to top, var(--pagebg) 0%, var(--pagebg) 45%, transparent 100%);
+      border-top: 1px solid rgba(247, 250, 252, 0.14);
+    }
+
     #cp_vodemo {
       width: 100%;
       max-width: 880px;
@@ -599,6 +626,9 @@
   </style>
 </head>
 <body>
+
+<div class="cp__edgeTop"></div>
+<div class="cp__edgeBottom"></div>
 
 <div id="cp_vodemo">
   <!-- Top Switcher -->
