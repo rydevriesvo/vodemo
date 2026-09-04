@@ -1,0 +1,708 @@
+(function () {
+  'use strict';
+
+  // Cardd's "code" embed mode can execute this script before it has
+  // actually inserted #cp_vodemo and its children into the live DOM.
+  // Every getElementById() below would then return null, and since the
+  // rest of this script guards each DOM write with `if (element)`, it
+  // fails completely silently: no console errors, no tracks, no clicks.
+  // This waits (with a hard timeout) until the container genuinely
+  // exists before wiring anything up.
+  var BOOT_MAX_ATTEMPTS = 200; // ~10s at 50ms intervals
+  var bootAttempts = 0;
+
+  function boot() {
+    var root = document.getElementById('cp_vodemo');
+    if (!root) {
+      bootAttempts++;
+      if (bootAttempts > BOOT_MAX_ATTEMPTS) {
+        console.error('[VO Player] #cp_vodemo never appeared in the DOM — check how Cardd is inserting this embed.');
+        return;
+      }
+      return setTimeout(boot, 50);
+    }
+    init(root);
+  }
+
+  function init(root) {
+
+  // DOM Elements
+  var audio = document.getElementById('cp_audio');
+  var listEl = document.getElementById('cp_list');
+  var titleEl = document.getElementById('cp_title');
+  var mainHeading = document.getElementById('cp_mainHeading');
+  var curEl = document.getElementById('cp_cur');
+  var durEl = document.getElementById('cp_dur');
+  var canvas = document.getElementById('cp_canvas');
+  var seekEl = document.getElementById('cp_seek');
+  var volEl = document.getElementById('cp_vol');
+  var btnPlay = document.getElementById('btnPlay');
+  var btnRestart = document.getElementById('btnRestart');
+  var playIcon = document.getElementById('cp_playIcon');
+  var pauseIcon = document.getElementById('cp_pauseIcon');
+  var playText = document.getElementById('cp_playText');
+  var btnModeReels = document.getElementById('btnModeReels');
+  var btnModeLibrary = document.getElementById('btnModeLibrary');
+  var filterPanel = document.getElementById('cp_filterPanel');
+  var searchInput = document.getElementById('cp_searchInput');
+  var clearBtn = document.getElementById('cp_clearBtn');
+  var shortlistCount = document.getElementById('cp_shortlistCount');
+  var btnExportShortlist = document.getElementById('btnExportShortlist');
+
+  // --- Track Databases (Exclusively populated from Matrix) ---
+  var reelsData = [
+    { id: "r1", title: "Video Game Demo", genre: "Demo", tags: ["Demo Reel"], status: "Produced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_VideoGameDemo.mp3" },
+    { id: "r2", title: "Ambient Noises and Efforts Demo", genre: "Demo", tags: ["Barks & Efforts", "Ambient"], status: "Produced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_AmbientandEffortsDemo.mp3" },
+    { id: "r3", title: "Character Commercial Demo", genre: "Demo", tags: ["Commercial Demo"], status: "Unproduced", url: "https://vodemo-70q.pages.dev/audio/Raw_Character_Commercial_Demo.mp3" }
+  ];
+
+  var characterData = [
+    { id: "c1", title: "Giant Frog Monster (Dialogue)", genre: "Gaming", tags: ["Monster"], status: "Produced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_Frog_Monster.mp3" },
+    { id: "c2", title: "Haunted Concerned NPC", genre: "Gaming", tags: ["Quest Giver"], status: "Produced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_Concerned_NPC.mp3" },
+    { id: "c3", title: "Hero facing Monsters", genre: "Gaming", tags: ["Protagonist"], status: "Produced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_Honorable_Hero.mp3" },
+    { id: "c4", title: "Remorseful Grand Villain", genre: "Gaming", tags: ["Antagonist"], status: "Produced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_Grand_Villain.mp3" },
+    { id: "c5", title: "Cowboy", genre: "Gaming", tags: ["Protagonist"], status: "Produced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_Cowboy_Virgil.mp3" },
+    { id: "c6", title: "Drunk Cockney Tavern Brawler", genre: "Gaming", tags: ["NPC"], status: "Produced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_Drunk_Cockney.mp3" },
+    { id: "c7", title: "Modern Day Infantry (Combat)", genre: "Gaming", tags: ["Protagonist", "Barks and Efforts"], status: "Produced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_Modern_Day_Infantry.mp3" },
+    { id: "c8", title: "Running Caveperson (Including Birds and Dinosaur)", genre: "Gaming", tags: ["Barks and Efforts", "Monster", "Animals"], status: "Produced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_RunningCaveman.mp3" },
+    { id: "c9", title: "Gladiator (Including Walla)", genre: "Gaming", tags: ["Barks and Efforts"], status: "Produced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_GladiatorArena.mp3" },
+    { id: "c10", title: "Zombie Home Invasion", genre: "Gaming", tags: ["Barks and Efforts", "Monster"], status: "Produced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_ZombieHomeInvasion.mp3" },
+    { id: "c11", title: "Players Sneaking by Monster in Cave", genre: "Gaming", tags: ["Monster"], status: "Produced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_EatingCreature.mp3" },
+    { id: "c12", title: "Ambient Carriage Ride", genre: "Gaming", tags: ["Ambient Noises"], status: "Produced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_AmbientStreetonCarriage.mp3" },
+    { id: "c13", title: "Toddlers Birthday Party", genre: "Commercial", tags: ["Character"], status: "Unproduced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_ToddlersBirthdayParty.mp3" },
+    { id: "c14", title: "Movie Trailer Over the Top", genre: "Commercial", tags: ["Character"], status: "Unproduced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_MovieTrailer.mp3" },
+    { id: "c15", title: "Juicy Quarter Pounder Storyteller", genre: "Commercial", tags: ["Character"], status: "Unproduced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_JuicyQuarterPounderStoryteller.mp3" },
+    { id: "c16", title: "Home Shopping Channel", genre: "Commercial", tags: ["Character"], status: "Unproduced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_HomeFurnishingsChannel.mp3" },
+    { id: "c17", title: "Auto Service", genre: "Commercial", tags: ["Character"], status: "Unproduced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_AutoService.mp3" },
+    { id: "c18", title: "Subway", genre: "Commercial", tags: ["Character"], status: "Unproduced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_Subway.mp3" },
+    { id: "c19", title: "Luxury Escapes", genre: "Commercial", tags: ["Character"], status: "Unproduced", url: "https://vodemo-70q.pages.dev/audio/RyanDevries_LuxuryEscapes.mp3" }
+  ];
+
+  var currentMode = 'reels';
+  var activePlaylist = [];
+  var currentTrack = null;
+  var selectedGenre = 'ALL';
+  var selectedArchetype = 'ALL';
+  var selectedStatus = 'ALL';
+  var searchQuery = '';
+  var shortlist = new Set();
+  var isSeeking = false;
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function formatTime(sec) {
+    if (!isFinite(sec) || sec < 0) return "0:00";
+    var m = Math.floor(sec / 60);
+    var s = Math.floor(sec % 60);
+    return m + ":" + (s < 10 ? "0" : "") + s;
+  }
+
+  function setPlayIconState() {
+    var isPaused = audio.paused;
+    if (playIcon) playIcon.style.display = isPaused ? 'inline-block' : 'none';
+    if (pauseIcon) pauseIcon.style.display = isPaused ? 'none' : 'inline-block';
+    if (playText) playText.textContent = isPaused ? 'PLAY' : 'PAUSE';
+  }
+
+  function updateActiveRowStyles() {
+    if (!listEl) return;
+    var rows = listEl.querySelectorAll('.cp__track');
+    rows.forEach(function (row) {
+      var trackId = row.getAttribute('data-id');
+      var isActive = currentTrack && trackId === currentTrack.id;
+      row.classList.toggle('is-active', isActive);
+      var pill = row.querySelector('.cp__pill');
+      if (pill) {
+        pill.innerHTML = `<svg class="cp__icon" viewBox="0 0 24 24"><path d="${isActive && !audio.paused ? 'M12 3v10.55A4 4 0 1 0 14 17V7h6V3z' : 'M8 5v14l11-7z'}"></path></svg>`;
+      }
+    });
+  }
+
+  function updateShortlistUI() {
+    if (shortlistCount) {
+      shortlistCount.textContent = shortlist.size + (shortlist.size === 1 ? " Track" : " Tracks");
+    }
+  }
+
+  function loadTrack(track, autoplay) {
+    if (!track) return;
+    currentTrack = track;
+    if (titleEl) titleEl.textContent = track.title;
+    audio.src = track.url;
+    audio.load();
+    updateActiveRowStyles();
+    setPlayIconState();
+    if (autoplay) audio.play().catch(function () {});
+  }
+
+  function downloadTrack(track, btnEl) {
+    if (btnEl) btnEl.classList.add('is-loading');
+    fetch(track.url)
+      .then(function (res) {
+        if (!res.ok) throw new Error("Network error");
+        return res.blob();
+      })
+      .then(function (blob) {
+        var url = window.URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        var safeName = track.title.replace(/[^a-zA-Z0-9 ]/g, "").replace(/\s+/g, "_");
+        a.download = "RyanDevries_" + safeName + ".mp3";
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      })
+      .catch(function () {
+        window.open(track.url, '_blank');
+      })
+      .finally(function () {
+        if (btnEl) btnEl.classList.remove('is-loading');
+      });
+  }
+
+  function drawVisualizer() {
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+      canvas.width = canvas.offsetWidth || 300;
+      canvas.height = canvas.offsetHeight || 36;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    var bars = 36;
+    var barWidth = 4;
+    var gap = 4;
+
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      var width = canvas.width;
+      var height = canvas.height;
+      var totalBarWidth = bars * (barWidth + gap);
+      var startX = (width - totalBarWidth) / 2;
+
+      for (var i = 0; i < bars; i++) {
+        var h = audio && !audio.paused
+          ? Math.max(4, Math.sin(Date.now() / 150 + i * 0.4) * (height / 2 - 2) + height / 2 - 2)
+          : 4;
+        var x = startX + i * (barWidth + gap);
+        var y = (height - h) / 2;
+
+        ctx.fillStyle = audio && !audio.paused ? '#3DEBFF' : 'rgba(247, 250, 252, 0.2)';
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(x, y, barWidth, h, 2);
+        } else {
+          ctx.rect(x, y, barWidth, h);
+        }
+        ctx.fill();
+      }
+      requestAnimationFrame(render);
+    }
+    render();
+  }
+
+  function resetFilters() {
+    selectedGenre = 'ALL';
+    selectedArchetype = 'ALL';
+    selectedStatus = 'ALL';
+    searchQuery = '';
+    if (searchInput) searchInput.value = '';
+
+    var allChips = document.querySelectorAll('.cp__filters .cp__chip');
+    allChips.forEach(function (chip) {
+      chip.style.display = '';
+    });
+
+    var statusChips = document.querySelectorAll('#cp_statusTags .cp__chip');
+    statusChips.forEach(function (chip) {
+      chip.classList.toggle('is-active', chip.getAttribute('data-status') === 'ALL');
+    });
+
+    var genreChips = document.querySelectorAll('#cp_genreTags .cp__chip');
+    genreChips.forEach(function (chip) {
+      chip.classList.toggle('is-active', chip.getAttribute('data-genre') === 'ALL');
+    });
+
+    var archChips = document.querySelectorAll('#cp_archetypeTags .cp__chip');
+    archChips.forEach(function (chip) {
+      chip.classList.toggle('is-active', chip.getAttribute('data-arch') === 'ALL');
+    });
+
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
+
+  function updateAvailableFilterChips() {
+    if (currentMode !== 'library') return;
+
+    var tracksForArch = characterData.filter(function (t) {
+      var matchesStatus = selectedStatus === 'ALL' || t.status === selectedStatus;
+      var matchesGenre = selectedGenre === 'ALL' || t.genre.toLowerCase() === selectedGenre.toLowerCase();
+      var matchesSearch = !searchQuery ||
+        t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.genre.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (t.status && t.status.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        t.tags.some(function(tag) { return tag.toLowerCase().includes(searchQuery.toLowerCase()); });
+      return matchesStatus && matchesGenre && matchesSearch;
+    });
+
+    var availableTags = new Set();
+    tracksForArch.forEach(function (t) {
+      if (Array.isArray(t.tags)) {
+        t.tags.forEach(function (tag) {
+          availableTags.add(tag.toLowerCase().trim());
+        });
+      }
+    });
+
+    var archChips = document.querySelectorAll('#cp_archetypeTags .cp__chip');
+    var currentArchStillValid = selectedArchetype === 'ALL';
+
+    archChips.forEach(function (chip) {
+      var archVal = chip.getAttribute('data-arch');
+      if (archVal === 'ALL') {
+        chip.style.display = '';
+        return;
+      }
+      var isValid = availableTags.has(archVal.toLowerCase().trim());
+      chip.style.display = isValid ? '' : 'none';
+      if (isValid && selectedArchetype.toLowerCase() === archVal.toLowerCase()) {
+        currentArchStillValid = true;
+      }
+    });
+
+    if (!currentArchStillValid) {
+      selectedArchetype = 'ALL';
+      archChips.forEach(function (chip) {
+        chip.classList.toggle('is-active', chip.getAttribute('data-arch') === 'ALL');
+      });
+    }
+
+    var tracksForStatus = characterData.filter(function (t) {
+      var matchesGenre = selectedGenre === 'ALL' || t.genre.toLowerCase() === selectedGenre.toLowerCase();
+      var matchesArch = selectedArchetype === 'ALL' ||
+        t.tags.some(function(tag) { return tag.toLowerCase() === selectedArchetype.toLowerCase(); });
+      var matchesSearch = !searchQuery ||
+        t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.genre.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.tags.some(function(tag) { return tag.toLowerCase().includes(searchQuery.toLowerCase()); });
+      return matchesGenre && matchesArch && matchesSearch;
+    });
+
+    var statusChips = document.querySelectorAll('#cp_statusTags .cp__chip');
+    var currentStatusStillValid = selectedStatus === 'ALL';
+    statusChips.forEach(function (chip) {
+      var statVal = chip.getAttribute('data-status');
+      if (statVal === 'ALL') {
+        chip.style.display = '';
+        return;
+      }
+      var hasMatch = tracksForStatus.some(function (t) {
+        return t.status && t.status.toLowerCase() === statVal.toLowerCase();
+      });
+      chip.style.display = hasMatch ? '' : 'none';
+      if (hasMatch && selectedStatus.toLowerCase() === statVal.toLowerCase()) {
+        currentStatusStillValid = true;
+      }
+    });
+    if (!currentStatusStillValid) {
+      selectedStatus = 'ALL';
+      statusChips.forEach(function (chip) {
+        chip.classList.toggle('is-active', chip.getAttribute('data-status') === 'ALL');
+      });
+    }
+
+    var tracksForGenre = characterData.filter(function (t) {
+      var matchesStatus = selectedStatus === 'ALL' || t.status === selectedStatus;
+      var matchesArch = selectedArchetype === 'ALL' ||
+        t.tags.some(function(tag) { return tag.toLowerCase() === selectedArchetype.toLowerCase(); });
+      var matchesSearch = !searchQuery ||
+        t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (t.status && t.status.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        t.tags.some(function(tag) { return tag.toLowerCase().includes(searchQuery.toLowerCase()); });
+      return matchesStatus && matchesArch && matchesSearch;
+    });
+
+    var genreChips = document.querySelectorAll('#cp_genreTags .cp__chip');
+    var currentGenreStillValid = selectedGenre === 'ALL';
+    genreChips.forEach(function (chip) {
+      var genVal = chip.getAttribute('data-genre');
+      if (genVal === 'ALL') {
+        chip.style.display = '';
+        return;
+      }
+      var hasMatch = tracksForGenre.some(function (t) {
+        return t.genre && t.genre.toLowerCase() === genVal.toLowerCase();
+      });
+      chip.style.display = hasMatch ? '' : 'none';
+      if (hasMatch && selectedGenre.toLowerCase() === genVal.toLowerCase()) {
+        currentGenreStillValid = true;
+      }
+    });
+    if (!currentGenreStillValid) {
+      selectedGenre = 'ALL';
+      genreChips.forEach(function (chip) {
+        chip.classList.toggle('is-active', chip.getAttribute('data-genre') === 'ALL');
+      });
+    }
+  }
+
+  function updateClearBtnVisibility() {
+    var hasFilter = selectedGenre !== 'ALL' || selectedArchetype !== 'ALL' || selectedStatus !== 'ALL' || searchQuery.trim() !== '';
+    if (clearBtn) clearBtn.style.display = hasFilter ? 'inline-flex' : 'none';
+  }
+
+  function filterLibraryTracks() {
+    return characterData.filter(function (track) {
+      var matchesStatus = selectedStatus === 'ALL' || track.status === selectedStatus;
+      var matchesGenre = selectedGenre === 'ALL' || track.genre.toLowerCase() === selectedGenre.toLowerCase();
+      var matchesArch = selectedArchetype === 'ALL' ||
+        track.tags.some(function(t) { return t.toLowerCase() === selectedArchetype.toLowerCase(); });
+      var matchesSearch = !searchQuery ||
+        track.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        track.genre.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (track.status && track.status.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        track.tags.some(function(t) { return t.toLowerCase().includes(searchQuery.toLowerCase()); });
+
+      return matchesStatus && matchesGenre && matchesArch && matchesSearch;
+    });
+  }
+
+  function applyFilters(isModeSwitch) {
+    if (currentMode === 'reels') {
+      activePlaylist = reelsData;
+    } else {
+      updateAvailableFilterChips();
+      activePlaylist = filterLibraryTracks();
+    }
+    updateClearBtnVisibility();
+    renderList();
+
+    if (isModeSwitch) {
+      if (activePlaylist.length > 0) {
+        loadTrack(activePlaylist[0], false);
+      } else {
+        if (titleEl) titleEl.textContent = "Select a track";
+        audio.removeAttribute('src');
+        if (curEl) curEl.textContent = "0:00";
+        if (durEl) durEl.textContent = "0:00";
+        if (seekEl) seekEl.value = "0";
+        setPlayIconState();
+      }
+    } else {
+      if (!currentTrack && activePlaylist.length > 0) {
+        loadTrack(activePlaylist[0], false);
+      } else {
+        updateActiveRowStyles();
+      }
+    }
+  }
+
+  function renderList() {
+    if (!listEl) return;
+    listEl.innerHTML = "";
+
+    if (activePlaylist.length === 0) {
+      listEl.innerHTML = `
+        <div class="cp__emptyState">
+          <div>No voice clips match your active filters (${selectedGenre} / ${selectedArchetype} / ${selectedStatus}).</div>
+          <button type="button" class="cp__chip is-active" id="cp_resetBtnInEmpty">Clear Filters & View All</button>
+        </div>`;
+
+      var resetBtn = document.getElementById('cp_resetBtnInEmpty');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', function () {
+          resetFilters();
+          applyFilters(false);
+        });
+      }
+      return;
+    }
+
+    activePlaylist.forEach(function (track, i) {
+      var row = document.createElement('div');
+      var isCurrent = currentTrack && track.id === currentTrack.id;
+      row.className = "cp__track" + (isCurrent ? " is-active" : "");
+      row.setAttribute('data-id', track.id);
+      row.setAttribute('data-index', String(i));
+
+      var isTrackSaved = shortlist.has(track.id);
+      var statusClass = track.status === 'Produced' ? 'cp__statusTag--produced' : 'cp__statusTag--unproduced';
+      var tagsList = Array.isArray(track.tags) ? track.tags.join(', ') : (track.tags || '');
+      var fullMetaString = track.genre + ' • ' + tagsList + (track.status ? ' • ' + track.status : '');
+
+      row.innerHTML = `
+        <div class="cp__pill">
+          <svg class="cp__icon" viewBox="0 0 24 24"><path d="${isCurrent && !audio.paused ? 'M12 3v10.55A4 4 0 1 0 14 17V7h6V3z' : 'M8 5v14l11-7z'}"></path></svg>
+        </div>
+        <div class="cp__trackMeta">
+          <div class="cp__trackName" title="${escapeHtml(track.title)}">${escapeHtml(track.title)}</div>
+          <div class="cp__trackSub" title="${escapeHtml(fullMetaString)}">
+            <div class="cp__trackSubInner">
+              <span>${escapeHtml(track.genre)}</span>
+              <span class="cp__subDot">•</span>
+              <span>${escapeHtml(tagsList)}</span>
+              ${track.status ? `<span class="cp__subDot">•</span><span class="cp__statusTag ${statusClass}">${escapeHtml(track.status)}</span>` : ''}
+            </div>
+          </div>
+        </div>
+        <div class="cp__trackActions">
+          <button type="button" class="cp__iconBtn ${isTrackSaved ? 'is-saved' : ''}" data-action="shortlist" title="Save to Casting Shortlist">
+            <svg class="cp__icon" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>
+          </button>
+          <button type="button" class="cp__iconBtn" data-action="download" title="Download Audio File">
+            <svg class="cp__icon" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg>
+          </button>
+        </div>
+      `;
+
+      row.addEventListener('click', function (e) {
+        if (e.target.closest('.cp__iconBtn')) return;
+        if (currentTrack && track.id === currentTrack.id) {
+          if (!audio.src) { loadTrack(track, true); return; }
+          if (!audio.paused) audio.pause();
+          else audio.play().catch(function(){});
+        } else {
+          loadTrack(track, true);
+        }
+      });
+
+      var btnSave = row.querySelector('[data-action="shortlist"]');
+      if (btnSave) {
+        btnSave.addEventListener('click', function (e) {
+          e.stopPropagation();
+          if (shortlist.has(track.id)) {
+            shortlist.delete(track.id);
+          } else {
+            shortlist.add(track.id);
+          }
+          updateShortlistUI();
+          renderList();
+        });
+      }
+
+      var btnDl = row.querySelector('[data-action="download"]');
+      if (btnDl) {
+        btnDl.addEventListener('click', function (e) {
+          e.stopPropagation();
+          downloadTrack(track, btnDl);
+        });
+      }
+
+      listEl.appendChild(row);
+    });
+
+    requestAnimationFrame(updateTickers);
+  }
+
+  function updateTickers() {
+    if (!listEl) return;
+    var rows = listEl.querySelectorAll('.cp__track');
+    rows.forEach(function (row) {
+      var wrap = row.querySelector('.cp__trackSub');
+      var inner = row.querySelector('.cp__trackSubInner');
+      if (!wrap || !inner) return;
+
+      var diff = inner.scrollWidth - wrap.clientWidth;
+      if (diff > 4) {
+        var shiftDistance = diff + 12;
+        var duration = Math.max(3.2, shiftDistance / 28);
+        inner.style.setProperty('--ticker-shift', '-' + shiftDistance + 'px');
+        inner.style.setProperty('--ticker-duration', duration.toFixed(2) + 's');
+        row.classList.add('has-overflow');
+      } else {
+        row.classList.remove('has-overflow');
+      }
+    });
+  }
+
+  window.addEventListener('resize', function () {
+    updateTickers();
+  });
+
+  if (btnModeReels) {
+    btnModeReels.addEventListener('click', function () {
+      if (currentMode === 'reels') return;
+      currentMode = 'reels';
+      btnModeReels.classList.add('is-active');
+      btnModeReels.setAttribute('aria-selected', 'true');
+      if (btnModeLibrary) {
+        btnModeLibrary.classList.remove('is-active');
+        btnModeLibrary.setAttribute('aria-selected', 'false');
+      }
+      if (filterPanel) filterPanel.style.display = 'none';
+      if (mainHeading) mainHeading.textContent = 'Voiceover Demos & Reels';
+      if (!audio.paused) audio.pause();
+      resetFilters();
+      applyFilters(true);
+    });
+  }
+
+  if (btnModeLibrary) {
+    btnModeLibrary.addEventListener('click', function () {
+      if (currentMode === 'library') return;
+      currentMode = 'library';
+      btnModeLibrary.classList.add('is-active');
+      btnModeLibrary.setAttribute('aria-selected', 'true');
+      if (btnModeReels) {
+        btnModeReels.classList.remove('is-active');
+        btnModeReels.setAttribute('aria-selected', 'false');
+      }
+      if (filterPanel) filterPanel.style.display = 'flex';
+      if (mainHeading) mainHeading.textContent = 'Character & Voice Finder';
+      if (!audio.paused) audio.pause();
+      resetFilters();
+      applyFilters(true);
+    });
+  }
+
+  var statusGroup = document.getElementById('cp_statusTags');
+  if (statusGroup) {
+    statusGroup.addEventListener('click', function (e) {
+      var chip = e.target.closest('.cp__chip');
+      if (chip) {
+        this.querySelectorAll('.cp__chip').forEach(function (c) { c.classList.remove('is-active'); });
+        chip.classList.add('is-active');
+        selectedStatus = chip.getAttribute('data-status');
+        applyFilters(false);
+      }
+    });
+  }
+
+  var genreGroup = document.getElementById('cp_genreTags');
+  if (genreGroup) {
+    genreGroup.addEventListener('click', function (e) {
+      var chip = e.target.closest('.cp__chip');
+      if (chip) {
+        this.querySelectorAll('.cp__chip').forEach(function (c) { c.classList.remove('is-active'); });
+        chip.classList.add('is-active');
+        selectedGenre = chip.getAttribute('data-genre');
+        applyFilters(false);
+      }
+    });
+  }
+
+  var archGroup = document.getElementById('cp_archetypeTags');
+  if (archGroup) {
+    archGroup.addEventListener('click', function (e) {
+      var chip = e.target.closest('.cp__chip');
+      if (chip) {
+        this.querySelectorAll('.cp__chip').forEach(function (c) { c.classList.remove('is-active'); });
+        chip.classList.add('is-active');
+        selectedArchetype = chip.getAttribute('data-arch');
+        applyFilters(false);
+      }
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', function (e) {
+      searchQuery = e.target.value;
+      applyFilters(false);
+    });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function () {
+      resetFilters();
+      applyFilters(false);
+    });
+  }
+
+  if (btnPlay) {
+    btnPlay.addEventListener('click', function () {
+      if (!audio.src && activePlaylist.length > 0) loadTrack(activePlaylist[0], true);
+      if (audio.paused) audio.play().catch(function () {});
+      else audio.pause();
+    });
+  }
+
+  if (btnRestart) {
+    btnRestart.addEventListener('click', function () {
+      if (!audio.src) return;
+      audio.currentTime = 0;
+      if (audio.paused) audio.play().catch(function () {});
+    });
+  }
+
+  audio.addEventListener('play', function () {
+    setPlayIconState();
+    updateActiveRowStyles();
+  });
+
+  audio.addEventListener('pause', function () {
+    setPlayIconState();
+    updateActiveRowStyles();
+  });
+
+  audio.addEventListener('timeupdate', function () {
+    if (!isSeeking && audio.duration) {
+      if (curEl) curEl.textContent = formatTime(audio.currentTime);
+      if (durEl) durEl.textContent = formatTime(audio.duration);
+      if (seekEl) seekEl.value = String((audio.currentTime / audio.duration) * 100);
+    }
+  });
+
+  audio.addEventListener('loadedmetadata', function () {
+    if (durEl) durEl.textContent = formatTime(audio.duration || 0);
+  });
+
+  audio.addEventListener('ended', function () {
+    setPlayIconState();
+    updateActiveRowStyles();
+    var curIdx = activePlaylist.findIndex(function(t) { return currentTrack && t.id === currentTrack.id; });
+    if (curIdx !== -1 && curIdx < activePlaylist.length - 1) {
+      loadTrack(activePlaylist[curIdx + 1], true);
+    }
+  });
+
+  if (seekEl) {
+    seekEl.addEventListener('mousedown', function () { isSeeking = true; });
+    seekEl.addEventListener('mouseup', function () { isSeeking = false; });
+    seekEl.addEventListener('change', function () {
+      if (audio.duration) {
+        audio.currentTime = audio.duration * (Number(seekEl.value) / 100);
+      }
+      isSeeking = false;
+    });
+  }
+
+  if (volEl) {
+    volEl.addEventListener('input', function () {
+      audio.volume = Math.max(0, Math.min(1, Number(volEl.value)));
+    });
+  }
+
+  if (btnExportShortlist) {
+    btnExportShortlist.addEventListener('click', function () {
+      if (shortlist.size === 0) {
+        var originalText = btnExportShortlist.textContent;
+        btnExportShortlist.textContent = "No saved clips yet!";
+        setTimeout(function () {
+          btnExportShortlist.textContent = originalText;
+        }, 1800);
+        return;
+      }
+      var saved = [...characterData, ...reelsData].filter(function(t) { return shortlist.has(t.id); });
+      saved.forEach(function(t) { downloadTrack(t); });
+    });
+  }
+
+  drawVisualizer();
+  applyFilters(true);
+
+  } // end init
+
+  boot();
+})();
