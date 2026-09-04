@@ -38,12 +38,31 @@
       display: flex;
       justify-content: center;
       align-items: flex-start;
+      position: relative;
+    }
+
+    /* Decorative background lives on a pseudo-element so it can be faded
+       out toward the edges (a soft vignette) rather than cutting off hard
+       at the iframe boundary — this is what keeps the seam between this
+       embedded page and the Carrd page around it from being visible. */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
       background-image:
         url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cg fill='none' stroke='%23F7FAFC' stroke-width='0.5' stroke-opacity='0.04'%3E%3Ccircle cx='50' cy='50' r='50'/%3E%3Ccircle cx='0' cy='50' r='50'/%3E%3Ccircle cx='100' cy='50' r='50'/%3E%3Ccircle cx='50' cy='0' r='50'/%3E%3Ccircle cx='50' cy='100' r='50'/%3E%3C/g%3E%3C/svg%3E"),
         radial-gradient(900px 600px at 18% 12%, rgba(255,62,165,.20), transparent 60%),
         radial-gradient(800px 600px at 82% 20%, rgba(61,235,255,.14), transparent 60%),
         radial-gradient(900px 700px at 50% 92%, rgba(255,212,0,.08), transparent 60%);
-      background-attachment: fixed;
+      -webkit-mask-image: radial-gradient(ellipse 85% 85% at 50% 50%, #000 55%, transparent 100%);
+      mask-image: radial-gradient(ellipse 85% 85% at 50% 50%, #000 55%, transparent 100%);
+    }
+
+    #cp_vodemo {
+      position: relative;
+      z-index: 1;
     }
 
     #cp_vodemo {
@@ -157,15 +176,6 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-    }
-
-    .cp__visualizer {
-      width: 100%;
-      height: 36px;
-      background: rgba(0, 0, 0, 0.25);
-      border-radius: 8px;
-      margin-bottom: 14px;
-      display: block;
     }
 
     .cp__controls {
@@ -615,9 +625,6 @@
       </div>
     </div>
 
-    <!-- Audio Visualizer Canvas -->
-    <canvas class="cp__visualizer" id="cp_canvas"></canvas>
-
     <div class="cp__controls">
       <!-- Restart -->
       <button type="button" class="cp__btn" id="btnRestart" title="Restart track">
@@ -744,7 +751,6 @@
   var mainHeading = document.getElementById('cp_mainHeading');
   var curEl = document.getElementById('cp_cur');
   var durEl = document.getElementById('cp_dur');
-  var canvas = document.getElementById('cp_canvas');
   var seekEl = document.getElementById('cp_seek');
   var volEl = document.getElementById('cp_vol');
   var btnPlay = document.getElementById('btnPlay');
@@ -879,49 +885,6 @@
       .finally(function () {
         if (btnEl) btnEl.classList.remove('is-loading');
       });
-  }
-
-  function drawVisualizer() {
-    if (!canvas) return;
-    var ctx = canvas.getContext('2d');
-
-    function resizeCanvas() {
-      canvas.width = canvas.offsetWidth || 300;
-      canvas.height = canvas.offsetHeight || 36;
-    }
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-
-    var bars = 36;
-    var barWidth = 4;
-    var gap = 4;
-
-    function render() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      var width = canvas.width;
-      var height = canvas.height;
-      var totalBarWidth = bars * (barWidth + gap);
-      var startX = (width - totalBarWidth) / 2;
-
-      for (var i = 0; i < bars; i++) {
-        var h = audio && !audio.paused
-          ? Math.max(4, Math.sin(Date.now() / 150 + i * 0.4) * (height / 2 - 2) + height / 2 - 2)
-          : 4;
-        var x = startX + i * (barWidth + gap);
-        var y = (height - h) / 2;
-
-        ctx.fillStyle = audio && !audio.paused ? '#3DEBFF' : 'rgba(247, 250, 252, 0.2)';
-        ctx.beginPath();
-        if (ctx.roundRect) {
-          ctx.roundRect(x, y, barWidth, h, 2);
-        } else {
-          ctx.rect(x, y, barWidth, h);
-        }
-        ctx.fill();
-      }
-      requestAnimationFrame(render);
-    }
-    render();
   }
 
   function resetFilters() {
@@ -1410,8 +1373,30 @@
     });
   }
 
-  drawVisualizer();
   applyFilters(true);
+
+  // Tell whatever page is hosting this in an iframe how tall the content
+  // actually is, so the host can resize the iframe to match instead of
+  // clipping it at a fixed height. Fires on load, on any size change
+  // (mode switch, filters, track list changes), on window resize, and
+  // once fonts finish loading (since font swap can change text height).
+  function reportHeight() {
+    var h = document.documentElement.scrollHeight;
+    try {
+      window.parent.postMessage({ type: 'cp_vodemo_resize', height: h }, '*');
+    } catch (e) {}
+  }
+
+  reportHeight();
+  window.addEventListener('resize', reportHeight);
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(reportHeight);
+  }
+  if ('ResizeObserver' in window) {
+    new ResizeObserver(reportHeight).observe(root);
+  } else {
+    setInterval(reportHeight, 500);
+  }
 
   } // end init
 
