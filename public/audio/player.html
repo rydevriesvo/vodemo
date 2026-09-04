@@ -1381,9 +1381,15 @@
   // (mode switch, filters, track list changes), on window resize, and
   // once fonts finish loading (since font swap can change text height).
   function reportHeight() {
-    var h = document.documentElement.scrollHeight;
+    // Measuring document.documentElement.scrollHeight doesn't work here:
+    // scrollHeight can't report smaller than the iframe's current
+    // viewport height, so once the iframe has grown tall it can never
+    // self-report a smaller number again. Measuring the card element
+    // itself sidesteps that entirely, since its size is driven purely
+    // by its own content, not by how tall the iframe currently is.
+    var h = root.getBoundingClientRect().height + 48; // +48 = body's 24px top/bottom padding
     try {
-      window.parent.postMessage({ type: 'cp_vodemo_resize', height: h }, '*');
+      window.parent.postMessage({ type: 'cp_vodemo_resize', height: Math.ceil(h) }, '*');
     } catch (e) {}
   }
 
